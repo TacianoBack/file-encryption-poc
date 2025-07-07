@@ -1,5 +1,8 @@
 import * as fs from "fs";
 import * as crypto from "crypto";
+import * as dotenv from "dotenv";
+
+dotenv.config();
 
 function helloWorld(): void {
   console.log("Hello, World!");
