@@ -35,3 +35,16 @@ export function encryptFile({
 
 helloWorld();
 
+// Exemplo de uso da função encryptFile
+const inputPath = './test-file.zip';
+const outputPath = './test-file.zip.enc';
+const password = 'senha-forte';
+
+encryptFile({ inputPath, outputPath, password })
+  .then(() => {
+    console.log('Arquivo criptografado com sucesso:', outputPath);
+  })
+  .catch((err) => {
+    console.error('Erro ao criptografar o arquivo:', err);
+  });
+
