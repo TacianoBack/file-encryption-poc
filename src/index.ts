@@ -66,27 +66,33 @@ export function decryptFile({
 }
 
 helloWorld();
-
-// Utilizando variáveis do .env
-const inputPath = process.env.INPUT_FILE || "./test-file.zip";
-const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
-const password = process.env.PASSWORD || "senha-forte";
-const decryptedOutputPath =
-  process.env.DECRYPTED_FILE || "./test-file-decrypted.zip";
-
-// Exemplo de uso da função encryptFile e decryptFile em sequência
-encryptFile({ inputPath, outputPath, password })
-  .then(() => {
+function runEncrypt() {
+  const inputPath = process.env.INPUT_FILE || "./test-file.zip";
+  const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
+  const password = process.env.PASSWORD || "senha-forte";
+  return encryptFile({ inputPath, outputPath, password }).then(() => {
     console.log("Arquivo criptografado com sucesso:", outputPath);
-    return decryptFile({
-      inputPath: outputPath,
-      outputPath: decryptedOutputPath,
-      password,
-    });
-  })
-  .then(() => {
-    console.log("Arquivo descriptografado com sucesso:", decryptedOutputPath);
-  })
-  .catch((err) => {
-    console.error("Erro ao criptografar/descriptografar o arquivo:", err);
   });
+}
+
+function runDecrypt() {
+  const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
+  const decryptedOutputPath =
+    process.env.DECRYPTED_FILE || "./test-file-decrypted.zip";
+  const password = process.env.PASSWORD || "senha-forte";
+  return decryptFile({
+    inputPath: outputPath,
+    outputPath: decryptedOutputPath,
+    password,
+  }).then(() => {
+    console.log("Arquivo descriptografado com sucesso:", decryptedOutputPath);
+  });
+}
+
+if (process.env.TEST === "false") {
+  runEncrypt()
+    .then(() => runDecrypt())
+    .catch((err) => {
+      console.error("Erro ao criptografar/descriptografar o arquivo:", err);
+    });
+}
