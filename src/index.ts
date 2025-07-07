@@ -67,12 +67,14 @@ export function decryptFile({
 
 helloWorld();
 
-// Exemplo de uso da função encryptFile e decryptFile em sequência
-const inputPath = "./test-file.zip";
-const outputPath = "./test-file.zip.enc";
-const password = "senha-forte";
-const decryptedOutputPath = "./test-file-decrypted.zip";
+// Utilizando variáveis do .env
+const inputPath = process.env.INPUT_FILE || "./test-file.zip";
+const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
+const password = process.env.PASSWORD || "senha-forte";
+const decryptedOutputPath =
+  process.env.DECRYPTED_FILE || "./test-file-decrypted.zip";
 
+// Exemplo de uso da função encryptFile e decryptFile em sequência
 encryptFile({ inputPath, outputPath, password })
   .then(() => {
     console.log("Arquivo criptografado com sucesso:", outputPath);
