@@ -15,6 +15,33 @@ const ALGORITHM = "aes-256-gcm";
 const AUTH_TAG_LENGTH = 16;
 const DEFAULT_PASSWORD = process.env.PASSWORD || "senha-forte";
 
+function readSaltIvAuthTag(filePath: string) {
+  const fd = fs.openSync(filePath, "r");
+  const stats = fs.statSync(filePath);
+  const salt = Buffer.alloc(SALT_LENGTH);
+  const iv = Buffer.alloc(IV_LENGTH);
+  const authTag = Buffer.alloc(AUTH_TAG_LENGTH);
+  fs.readSync(fd, salt, 0, SALT_LENGTH, 0);
+  fs.readSync(fd, iv, 0, IV_LENGTH, SALT_LENGTH);
+  fs.readSync(fd, authTag, 0, AUTH_TAG_LENGTH, stats.size - AUTH_TAG_LENGTH);
+  fs.closeSync(fd);
+  return { salt, iv, authTag, stats };
+}
+
+function createKey(password: string, salt: Buffer) {
+  return crypto.scryptSync(password, salt, 32);
+}
+
+function createCipher(key: Buffer, iv: Buffer) {
+  return crypto.createCipheriv(ALGORITHM, key, iv);
+}
+
+function createDecipher(key: Buffer, iv: Buffer, authTag: Buffer) {
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  decipher.setAuthTag(authTag);
+  return decipher;
+}
+
 // Função para criptografar um arquivo usando streams
 export function encryptFile({
   inputPath,
@@ -28,10 +55,10 @@ export function encryptFile({
   return new Promise((resolve, reject) => {
     const salt = generateSalt(SALT_LENGTH);
     const iv = crypto.randomBytes(IV_LENGTH);
-    const key = crypto.scryptSync(password, salt, 32);
+    const key = createKey(password, salt);
     const input = fs.createReadStream(inputPath);
     const output = fs.createWriteStream(outputPath);
-    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+    const cipher = createCipher(key, iv);
     // Escreve salt + IV no início do arquivo
     output.write(Buffer.concat([salt, iv]), (err) => {
       if (err) return reject(err);
@@ -61,24 +88,14 @@ export function decryptFile({
   password: string;
 }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const fd = fs.openSync(inputPath, "r");
-    const salt = Buffer.alloc(SALT_LENGTH);
-    const iv = Buffer.alloc(IV_LENGTH);
-    const stats = fs.statSync(inputPath);
-    fs.readSync(fd, salt, 0, SALT_LENGTH, 0);
-    fs.readSync(fd, iv, 0, IV_LENGTH, SALT_LENGTH);
-    // Lê o authentication tag do final do arquivo
-    const authTag = Buffer.alloc(AUTH_TAG_LENGTH);
-    fs.readSync(fd, authTag, 0, AUTH_TAG_LENGTH, stats.size - AUTH_TAG_LENGTH);
-    fs.closeSync(fd);
-    const key = crypto.scryptSync(password, salt, 32);
+    const { salt, iv, authTag, stats } = readSaltIvAuthTag(inputPath);
+    const key = createKey(password, salt);
     const input = fs.createReadStream(inputPath, {
       start: SALT_LENGTH + IV_LENGTH,
       end: stats.size - AUTH_TAG_LENGTH - 1,
     });
     const output = fs.createWriteStream(outputPath);
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-    decipher.setAuthTag(authTag);
+    const decipher = createDecipher(key, iv, authTag);
     input.pipe(decipher).pipe(output);
     output.on("finish", resolve);
     output.on("error", reject);
