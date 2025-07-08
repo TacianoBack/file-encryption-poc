@@ -4,7 +4,13 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-const SALT = crypto.randomBytes(102400000);
+// Função para gerar um salt aleatório
+export function generateSalt(length: number = 16): Buffer {
+  return crypto.randomBytes(length);
+}
+
+const SALT_LENGTH = 16;
+const IV_LENGTH = 16;
 const ALGORITHM = "aes-256-cbc";
 const DEFAULT_PASSWORD = process.env.PASSWORD || "senha-forte";
 
@@ -19,13 +25,13 @@ export function encryptFile({
   password: string;
 }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const key = crypto.scryptSync(password, SALT, 32, { N: 2 });
-    const iv = crypto.randomBytes(16);
-
+    const salt = generateSalt(SALT_LENGTH);
+    const iv = crypto.randomBytes(IV_LENGTH);
+    const key = crypto.scryptSync(password, salt, 32);
     const input = fs.createReadStream(inputPath);
     const output = fs.createWriteStream(outputPath);
-
-    output.write(iv, (err) => {
+    // Escreve salt + IV no início do arquivo
+    output.write(Buffer.concat([salt, iv]), (err) => {
       if (err) return reject(err);
       const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
       input.pipe(cipher).pipe(output, { end: true });
@@ -47,15 +53,18 @@ export function decryptFile({
   password: string;
 }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const key = crypto.scryptSync(password, SALT, 32);
-    // Lê o IV de forma síncrona antes de criar o stream
     const fd = fs.openSync(inputPath, "r");
-    const ivBuffer = Buffer.alloc(16);
-    fs.readSync(fd, ivBuffer, 0, 16, 0);
+    const salt = Buffer.alloc(SALT_LENGTH);
+    const iv = Buffer.alloc(IV_LENGTH);
+    fs.readSync(fd, salt, 0, SALT_LENGTH, 0);
+    fs.readSync(fd, iv, 0, IV_LENGTH, SALT_LENGTH);
     fs.closeSync(fd);
-    const decipher = crypto.createDecipheriv(ALGORITHM, key, ivBuffer);
-    const input = fs.createReadStream(inputPath, { start: 16 });
+    const key = crypto.scryptSync(password, salt, 32);
+    const input = fs.createReadStream(inputPath, {
+      start: SALT_LENGTH + IV_LENGTH,
+    });
     const output = fs.createWriteStream(outputPath);
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     input.pipe(decipher).pipe(output);
     output.on("finish", resolve);
     output.on("error", reject);

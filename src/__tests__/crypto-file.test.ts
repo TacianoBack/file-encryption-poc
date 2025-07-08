@@ -27,7 +27,6 @@ describe("Crypto File", () => {
     });
     const original = fs.readFileSync(inputPath);
     const decrypted = fs.readFileSync(decryptedPath);
-    console.log(decrypted);
     expect(decrypted.equals(original)).toBe(true);
   });
 });
