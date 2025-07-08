@@ -42,6 +42,25 @@ function createDecipher(key: Buffer, iv: Buffer, authTag: Buffer) {
   return decipher;
 }
 
+function createSafeHandlers(output: fs.WriteStream, resolve: () => void, reject: (err: any) => void) {
+  let finished = false;
+  function safeFinish() {
+    if (!finished) {
+      finished = true;
+      output.close();
+      resolve();
+    }
+  }
+  function safeReject(err: any) {
+    if (!finished) {
+      finished = true;
+      output.close();
+      reject(err);
+    }
+  }
+  return { safeFinish, safeReject };
+}
+
 // Função para criptografar um arquivo usando streams
 export function encryptFile({
   inputPath,
@@ -59,20 +78,22 @@ export function encryptFile({
     const input = fs.createReadStream(inputPath);
     const output = fs.createWriteStream(outputPath);
     const cipher = createCipher(key, iv);
+    const { safeFinish, safeReject } = createSafeHandlers(output, resolve, reject);
     // Escreve salt + IV no início do arquivo
     output.write(Buffer.concat([salt, iv]), (err) => {
-      if (err) return reject(err);
+      if (err) return safeReject(err);
       input.pipe(cipher).pipe(output, { end: false });
       cipher.on("end", () => {
         // Escreve o authentication tag ao final do arquivo
         output.write(cipher.getAuthTag(), (err2) => {
-          if (err2) return reject(err2);
+          if (err2) return safeReject(err2);
           output.end();
         });
       });
-      output.on("finish", resolve);
-      output.on("error", reject);
-      input.on("error", reject);
+      output.on("finish", safeFinish);
+      output.on("error", safeReject);
+      input.on("error", safeReject);
+      cipher.on("error", safeReject);
     });
   });
 }
@@ -96,10 +117,12 @@ export function decryptFile({
     });
     const output = fs.createWriteStream(outputPath);
     const decipher = createDecipher(key, iv, authTag);
+    const { safeFinish, safeReject } = createSafeHandlers(output, resolve, reject);
     input.pipe(decipher).pipe(output);
-    output.on("finish", resolve);
-    output.on("error", reject);
-    input.on("error", reject);
+    output.on("finish", safeFinish);
+    output.on("error", safeReject);
+    input.on("error", safeReject);
+    decipher.on("error", safeReject);
   });
 }
 
