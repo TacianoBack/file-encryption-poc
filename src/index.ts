@@ -11,7 +11,8 @@ export function generateSalt(length: number = 16): Buffer {
 
 const SALT_LENGTH = 16;
 const IV_LENGTH = 16;
-const ALGORITHM = "aes-256-cbc";
+const ALGORITHM = "aes-256-gcm";
+const AUTH_TAG_LENGTH = 16;
 const DEFAULT_PASSWORD = process.env.PASSWORD || "senha-forte";
 
 // Função para criptografar um arquivo usando streams
@@ -30,11 +31,18 @@ export function encryptFile({
     const key = crypto.scryptSync(password, salt, 32);
     const input = fs.createReadStream(inputPath);
     const output = fs.createWriteStream(outputPath);
+    const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
     // Escreve salt + IV no início do arquivo
     output.write(Buffer.concat([salt, iv]), (err) => {
       if (err) return reject(err);
-      const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-      input.pipe(cipher).pipe(output, { end: true });
+      input.pipe(cipher).pipe(output, { end: false });
+      cipher.on("end", () => {
+        // Escreve o authentication tag ao final do arquivo
+        output.write(cipher.getAuthTag(), (err2) => {
+          if (err2) return reject(err2);
+          output.end();
+        });
+      });
       output.on("finish", resolve);
       output.on("error", reject);
       input.on("error", reject);
@@ -56,15 +64,21 @@ export function decryptFile({
     const fd = fs.openSync(inputPath, "r");
     const salt = Buffer.alloc(SALT_LENGTH);
     const iv = Buffer.alloc(IV_LENGTH);
+    const stats = fs.statSync(inputPath);
     fs.readSync(fd, salt, 0, SALT_LENGTH, 0);
     fs.readSync(fd, iv, 0, IV_LENGTH, SALT_LENGTH);
+    // Lê o authentication tag do final do arquivo
+    const authTag = Buffer.alloc(AUTH_TAG_LENGTH);
+    fs.readSync(fd, authTag, 0, AUTH_TAG_LENGTH, stats.size - AUTH_TAG_LENGTH);
     fs.closeSync(fd);
     const key = crypto.scryptSync(password, salt, 32);
     const input = fs.createReadStream(inputPath, {
       start: SALT_LENGTH + IV_LENGTH,
+      end: stats.size - AUTH_TAG_LENGTH - 1,
     });
     const output = fs.createWriteStream(outputPath);
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    decipher.setAuthTag(authTag);
     input.pipe(decipher).pipe(output);
     output.on("finish", resolve);
     output.on("error", reject);
