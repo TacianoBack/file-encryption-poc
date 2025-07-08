@@ -4,9 +4,9 @@ import * as dotenv from "dotenv";
 
 dotenv.config();
 
-function helloWorld(): void {
-  console.log("Hello, World!");
-}
+const SALT = crypto.randomBytes(102400000);
+const ALGORITHM = "aes-256-cbc";
+const DEFAULT_PASSWORD = process.env.PASSWORD || "senha-forte";
 
 // Função para criptografar um arquivo usando streams
 export function encryptFile({
@@ -19,8 +19,7 @@ export function encryptFile({
   password: string;
 }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const algorithm = "aes-256-cbc";
-    const key = crypto.scryptSync(password, "salt", 32);
+    const key = crypto.scryptSync(password, SALT, 32, { N: 2 });
     const iv = crypto.randomBytes(16);
 
     const input = fs.createReadStream(inputPath);
@@ -28,7 +27,7 @@ export function encryptFile({
 
     output.write(iv, (err) => {
       if (err) return reject(err);
-      const cipher = crypto.createCipheriv(algorithm, key, iv);
+      const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
       input.pipe(cipher).pipe(output, { end: true });
       output.on("finish", resolve);
       output.on("error", reject);
@@ -48,14 +47,13 @@ export function decryptFile({
   password: string;
 }): Promise<void> {
   return new Promise((resolve, reject) => {
-    const algorithm = "aes-256-cbc";
-    const key = crypto.scryptSync(password, "salt", 32);
+    const key = crypto.scryptSync(password, SALT, 32);
     // Lê o IV de forma síncrona antes de criar o stream
     const fd = fs.openSync(inputPath, "r");
     const ivBuffer = Buffer.alloc(16);
     fs.readSync(fd, ivBuffer, 0, 16, 0);
     fs.closeSync(fd);
-    const decipher = crypto.createDecipheriv(algorithm, key, ivBuffer);
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, ivBuffer);
     const input = fs.createReadStream(inputPath, { start: 16 });
     const output = fs.createWriteStream(outputPath);
     input.pipe(decipher).pipe(output);
@@ -65,12 +63,15 @@ export function decryptFile({
   });
 }
 
-helloWorld();
 function runEncrypt() {
   const inputPath = process.env.INPUT_FILE || "./test-file.zip";
   const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
-  const password = process.env.PASSWORD || "senha-forte";
-  return encryptFile({ inputPath, outputPath, password }).then(() => {
+
+  return encryptFile({
+    inputPath,
+    outputPath,
+    password: DEFAULT_PASSWORD,
+  }).then(() => {
     console.log("Arquivo criptografado com sucesso:", outputPath);
   });
 }
@@ -79,17 +80,16 @@ function runDecrypt() {
   const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
   const decryptedOutputPath =
     process.env.DECRYPTED_FILE || "./test-file-decrypted.zip";
-  const password = process.env.PASSWORD || "senha-forte";
   return decryptFile({
     inputPath: outputPath,
     outputPath: decryptedOutputPath,
-    password,
+    password: DEFAULT_PASSWORD,
   }).then(() => {
     console.log("Arquivo descriptografado com sucesso:", decryptedOutputPath);
   });
 }
 
-if (process.env.TEST === "false") {
+if (String(process.env?.TEST) !== "true") {
   runEncrypt()
     .then(() => runDecrypt())
     .catch((err) => {
