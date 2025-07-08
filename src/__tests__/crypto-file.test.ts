@@ -96,3 +96,54 @@ describe("Crypto File", () => {
     expect(errorCaught).toBe(true);
   }, 10000);
 });
+
+describe("AESGCMFileEncryptor (interface FileEncryptor)", () => {
+  const inputPath = path.join(__dirname, "test2.txt");
+  const encryptedPath = path.join(__dirname, "test2.txt.enc");
+  const decryptedPath = path.join(__dirname, "test2-decrypted.txt");
+  const password = "jest-password-2";
+  let encryptor: import("../index").FileEncryptor;
+
+  beforeEach(() => {
+    fs.writeFileSync(inputPath, "conteudo interface");
+    if (fs.existsSync(encryptedPath)) fs.unlinkSync(encryptedPath);
+    if (fs.existsSync(decryptedPath)) fs.unlinkSync(decryptedPath);
+    encryptor = require("../index").getDefaultEncryptor();
+  });
+
+  afterAll((done) => {
+    [inputPath, encryptedPath, decryptedPath].forEach((file) => {
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+    });
+    setImmediate(done);
+  });
+
+  it("deve criptografar e descriptografar via interface", async () => {
+    await encryptor.encrypt(inputPath, encryptedPath, password);
+    await encryptor.decrypt(encryptedPath, decryptedPath, password);
+    const original = fs.readFileSync(inputPath);
+    const decrypted = fs.readFileSync(decryptedPath);
+    expect(decrypted.equals(original)).toBe(true);
+  });
+
+  it("deve lançar erro ao descriptografar com senha errada via interface", async () => {
+    await encryptor.encrypt(inputPath, encryptedPath, password);
+    let errorCaught = false;
+    try {
+      await encryptor.decrypt(encryptedPath, decryptedPath, "senha-errada");
+    } catch (err: any) {
+      errorCaught = String(err.message).match(
+        /unable to authenticate|Unsupported state|timeout/
+      )
+        ? true
+        : false;
+    }
+    expect(errorCaught).toBe(true);
+  });
+
+  it("getDefaultEncryptor retorna instância funcional", () => {
+    const enc = require("../index").getDefaultEncryptor();
+    expect(typeof enc.encrypt).toBe("function");
+    expect(typeof enc.decrypt).toBe("function");
+  });
+});

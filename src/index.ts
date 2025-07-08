@@ -42,7 +42,11 @@ function createDecipher(key: Buffer, iv: Buffer, authTag: Buffer) {
   return decipher;
 }
 
-function createSafeHandlers(output: fs.WriteStream, resolve: () => void, reject: (err: any) => void) {
+function createSafeHandlers(
+  output: fs.WriteStream,
+  resolve: () => void,
+  reject: (err: any) => void
+) {
   let finished = false;
   function safeFinish() {
     if (!finished) {
@@ -78,7 +82,11 @@ export function encryptFile({
     const input = fs.createReadStream(inputPath);
     const output = fs.createWriteStream(outputPath);
     const cipher = createCipher(key, iv);
-    const { safeFinish, safeReject } = createSafeHandlers(output, resolve, reject);
+    const { safeFinish, safeReject } = createSafeHandlers(
+      output,
+      resolve,
+      reject
+    );
     // Escreve salt + IV no início do arquivo
     output.write(Buffer.concat([salt, iv]), (err) => {
       if (err) return safeReject(err);
@@ -117,7 +125,11 @@ export function decryptFile({
     });
     const output = fs.createWriteStream(outputPath);
     const decipher = createDecipher(key, iv, authTag);
-    const { safeFinish, safeReject } = createSafeHandlers(output, resolve, reject);
+    const { safeFinish, safeReject } = createSafeHandlers(
+      output,
+      resolve,
+      reject
+    );
     input.pipe(decipher).pipe(output);
     output.on("finish", safeFinish);
     output.on("error", safeReject);
@@ -126,35 +138,59 @@ export function decryptFile({
   });
 }
 
-function runEncrypt() {
-  const inputPath = process.env.INPUT_FILE || "./test-file.zip";
-  const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
-
-  return encryptFile({
-    inputPath,
-    outputPath,
-    password: DEFAULT_PASSWORD,
-  }).then(() => {
-    console.log("Arquivo criptografado com sucesso:", outputPath);
-  });
+export interface FileEncryptor {
+  encrypt(
+    inputPath: string,
+    outputPath: string,
+    password: string
+  ): Promise<void>;
+  decrypt(
+    inputPath: string,
+    outputPath: string,
+    password: string
+  ): Promise<void>;
 }
 
-function runDecrypt() {
-  const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
-  const decryptedOutputPath =
-    process.env.DECRYPTED_FILE || "./test-file-decrypted.zip";
-  return decryptFile({
-    inputPath: outputPath,
-    outputPath: decryptedOutputPath,
-    password: DEFAULT_PASSWORD,
-  }).then(() => {
-    console.log("Arquivo descriptografado com sucesso:", decryptedOutputPath);
-  });
+export class AESGCMFileEncryptor implements FileEncryptor {
+  encrypt(
+    inputPath: string,
+    outputPath: string,
+    password: string
+  ): Promise<void> {
+    return encryptFile({ inputPath, outputPath, password });
+  }
+  decrypt(
+    inputPath: string,
+    outputPath: string,
+    password: string
+  ): Promise<void> {
+    return decryptFile({ inputPath, outputPath, password });
+  }
+}
+
+export function getDefaultEncryptor(): FileEncryptor {
+  return new AESGCMFileEncryptor();
 }
 
 if (String(process.env?.TEST) !== "true") {
-  runEncrypt()
-    .then(() => runDecrypt())
+  const encryptor = getDefaultEncryptor();
+  const inputPath = process.env.INPUT_FILE || "./test-file.zip";
+  const outputPath = process.env.OUTPUT_FILE || "./test-file.zip.enc";
+  const decryptedOutputPath =
+    process.env.DECRYPTED_FILE || "./test-file-decrypted.zip";
+  encryptor
+    .encrypt(inputPath, outputPath, DEFAULT_PASSWORD)
+    .then(() => {
+      console.log("Arquivo criptografado com sucesso:", outputPath);
+      return encryptor.decrypt(
+        outputPath,
+        decryptedOutputPath,
+        DEFAULT_PASSWORD
+      );
+    })
+    .then(() => {
+      console.log("Arquivo descriptografado com sucesso:", decryptedOutputPath);
+    })
     .catch((err) => {
       console.error("Erro ao criptografar/descriptografar o arquivo:", err);
     });
